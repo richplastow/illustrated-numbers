@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>illustrated-numbers</title>
+    <style>
+        :root {
+            color-scheme: light dark; /* opt-in to follow the OS's dark-mode */
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 
+                "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+        body {
+            margin: 40px;
+            line-height: 1.6;
+            color: CanvasText;
+            background: Canvas;
+        }
+
+        /* Default link styles using system colors. */
+        a {
+            color: LinkText;
+            text-decoration: none;
+            transition: opacity 0.3s;
+        }
+
+        /* Visited links. */
+        a:visited {
+            color: VisitedText;
+        }
+
+        /* Active (pressed) links. */
+        a:active {
+            color: ActiveText;
+        }
+
+        /* Optional hover effect that stays theme-aware. */
+        a:hover {
+            opacity: 0.8; /* subtle, doesn’t override color */
+        }
+    </style>
+</head>
+<body>
+<h1>illustrated-numbers</h1>
+<p><b>Renders integers as memorable objects and characters, in a deterministic,
+    reversible way</b></p>
+<ul>
+    <li>Version: 0.0.1</li>
+    <li>Created: 25th October 2025 by Rich Plastow</li>
+    <li>Updated: 25th October 2025 by Rich Plastow</li>
+    <li>GitHub: <a href="https://github.com/richplastow/illustrated-numbers">
+        https://github.com/richplastow/illustrated-numbers</a></li>
+    <li>Live demo: <a href="https://richplastow.com/illustrated-numbers/">
+        https://richplastow.com/illustrated-numbers/</a></li>
+</ul>
+
+<h2>What is it?</h2>
+<p>
+    illustrated-numbers is a JavaScript library that transforms each integer into
+    unique, memorable illustration with a canonical name. Additionally, names can
+    be converted back into their original integers.
+</p>
+<p>
+    Great for providing human-friendly identifiers for user IDs, passwords, and
+    other resources.
+</p>
+
+</body>
+</html>
