@@ -11,9 +11,25 @@
  */
 
 /**
+ * @typedef {'breton'
+ * | 'pinstripe'
+ * } Pattern
+ */
+
+/**
+ * @typedef {{
+ *    ink: Color,
+ *    paper: Color,
+ *    pattern: Pattern,
+ * }} Background
+ */
+
+/**
  * @typedef {{
  *    kind: 'circle' | 'square' | 'triangle',
  *    size: number,
- *    color: Color,
+ *    ink: Color,
+ *    paper: Color,
+ *    pattern: Pattern,
  * }} Shape
  */
