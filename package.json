@@ -1,0 +1,28 @@
+{
+  "name": "illustrated-numbers",
+  "version": "0.0.1",
+  "description": "Renders integers as memorable objects and characters, in a deterministic, reversible way",
+  "keywords": [
+    "3d",
+    "glb"
+  ],
+  "homepage": "https://richplastow.com/illustrated-numbers/",
+  "bugs": {
+    "url": "https://github.com/richplastow/illustrated-numbers/issues"
+  },
+  "license": "MIT",
+  "author": "Rich Plastow",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/richplastow/illustrated-numbers.git"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit && echo '\\xE2\\x9C\\x85 No type-errors found!'",
+    "test": "node test.js && echo '\\xE2\\x9C\\x85 All tests passed!'"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^24.8.1"
+  },
+  "type": "module"
+}
