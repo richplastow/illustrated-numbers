@@ -173,9 +173,6 @@ export const renderAnsi = (
                         );
                         break;
                     case 'triangle':
-                        // Pass world coordinates directly; sdfTriangle will
-                        // internally handle Y inversion so callers don't need
-                        // to negate Y.
                         distance = sdfTriangle(
                             worldX - shape.position.x,
                             worldY - shape.position.y,
@@ -189,17 +186,15 @@ export const renderAnsi = (
 
                 // Determine pixel color based on distance to shape edge.
                 if (distance < -aaRegion / 2) { // aaRegion is defined outside the loops in world units
-                    // Fully inside the shape - solid color
-                    color = {
-                        red: shape.ink.red,
-                        green: shape.ink.green,
-                        blue: shape.ink.blue,
-                        alpha: 1,
-                    };
+                    // Fully inside the shape - sample the shape's pattern (ink/paper)
+                    // at this pixel so shapes can have textured fills.
+                    const fill = sampleShapePattern(shape, x, y);
+                    color = { red: fill.red, green: fill.green, blue: fill.blue, alpha: 1 };
                 } else if (distance < aaRegion / 2) {
-                    // On the edge - anti-alias and continue checking shapes.
+                    // On the edge - anti-alias using the shape's pattern colour
+                    // (not a flat ink), then composite over whatever is beneath.
                     const edgeAlpha = (aaRegion / 2 - distance) / aaRegion; // 0..1
-                    color = blendEdgeColor(shape, edgeAlpha);
+                    color = blendEdgeColor(shape, edgeAlpha, x, y);
                 }
 
                 // Blend the shape onto the canvas. Do NOT break the shape loop
@@ -306,13 +301,36 @@ function getAnsi256Color(upper, lower) {
  * @param {number} edgeAlpha Alpha in range 0..1 (1 == full ink)
  * @returns {{red:number,green:number,blue:number,alpha:number}}
  */
-function blendEdgeColor(shape, edgeAlpha) {
-    return {
-        red: shape.ink.red,
-        green: shape.ink.green,
-        blue: shape.ink.blue,
-        alpha: edgeAlpha,
-    };
+
+
+/** #### Sample a shape's pattern at pixel coordinates
+ * For now we support 'breton' (horizontal stripes) and 'pinstripe'
+ * (vertical stripes). This mirrors the background pattern logic so the
+ * same visuals can be used for backgrounds and shape fills.
+ * @param {import('./types.js').Shape} shape
+ * @param {number} px Pixel column index
+ * @param {number} py Pixel row index
+ * @returns {{red:number,green:number,blue:number}}
+ */
+function sampleShapePattern(shape, px, py) {
+    switch (shape.pattern) {
+        case 'breton':
+            return (py % 2 === 0) ? shape.ink : shape.paper;
+        case 'pinstripe':
+            return (px % 2 === 0) ? shape.ink : shape.paper;
+        default:
+            return shape.ink;
+    }
+}
+
+/** #### Blend edge color using the shape's pattern at this pixel
+ * Returns a color object (r,g,b,alpha) where r/g/b are the shape's
+ * pattern-sampled color and alpha is the supplied edgeAlpha. The returned
+ * object is intended to be composited over the existing pixel value.
+ */
+function blendEdgeColor(shape, edgeAlpha, px, py) {
+    const fill = sampleShapePattern(shape, px, py);
+    return { red: fill.red, green: fill.green, blue: fill.blue, alpha: edgeAlpha };
 }
 
 // Signed distance functions have been moved to `src/signed-distance-functions.js`.
@@ -323,8 +341,8 @@ function blendEdgeColor(shape, edgeAlpha) {
 
 console.log(
     renderAnsi(
-        32, // will be 32 pixels = 32 characters wide
-        24, // will be 24 pixels = 12 characters tall
+        64, // will be 64 pixels = 64 characters wide
+        48, // will be 24 pixels = 12 characters tall
         {
             ink: { red: 40, green: 60, blue: 90 },
             paper: { red: 20, green: 30, blue: 70 },
@@ -342,18 +360,18 @@ console.log(
             {
                 kind: 'triangle',
                 size: 3, // half-size in world units
-                position: { x: 4, y: 1 }, // world-origin offset to bottom-right
+                position: { x: 4, y: -2 }, // world-origin offset to bottom-right
                 ink: { red: 50, green: 50, blue: 255 },
-                paper: { red: 200, green: 200, blue: 255 },
+                paper: { red: 200, green: 200, blue: 0 },
                 pattern: 'breton', // horizontal stripes
             },
             {
                 kind: 'square',
                 size: 3, // half-size in world units
                 position: { x: -3, y: -2 }, // world-origin offset to top-left
-                ink: { red: 50, green: 255, blue: 50 },
+                ink: { red: 50, green: 10, blue: 50 },
                 paper: { red: 200, green: 255, blue: 200 },
-                pattern: 'breton', // horizontal stripes
+                pattern: 'pinstripe', // horizontal stripes
             },
         ],
         typeof process === 'object' &&
