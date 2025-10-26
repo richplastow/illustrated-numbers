@@ -64,18 +64,37 @@ export const validateBackground = (background, xpx) => {
  * @param {number} index The index of the shape in the shapes array (for error messages)
  */
 export const validateShape = (shape, xpx, index) => {
+    // The shape must be a plain object.
     if (shape === null || Array.isArray(shape)) throw TypeError(
         `${xpx} shapes[${index}] is '${shape === null ? 'null' : 'array'}' not a plain object`);
     if (typeof shape !== 'object') throw TypeError(
         `${xpx} shapes[${index}] is type '${typeof shape}' not 'object'`);
+
+    // `kind` can bs 'circle', 'square', or 'triangle'.
     if (typeof shape.kind !== 'string') throw TypeError(
         `${xpx} shapes[${index}].kind is type '${typeof shape.kind}' not 'string'`);
     if (['circle', 'square', 'triangle'].indexOf(shape.kind) === -1) throw RangeError(
         `${xpx} shapes[${index}].kind must be one of 'circle', 'square', or 'triangle'`);
+
+    // Validate the size and position.
     if (typeof shape.size !== 'number') throw TypeError(
         `${xpx} shapes[${index}].size is type '${typeof shape.size}' not 'number'`);
     if (!isIntInRange(shape.size, 1, 100)) throw RangeError(
         `${xpx} shapes[${index}].size must be an integer between 1 and 100`);
+    if (shape.position === null || Array.isArray(shape.position)) throw TypeError(
+        `${xpx} shapes[${index}].position is '${shape.position === null ? 'null' : 'array'}' not a plain object`);
+    if (typeof shape.position !== 'object') throw TypeError(
+        `${xpx} shapes[${index}].position is type '${typeof shape.position}' not 'object'`);
+    if (typeof shape.position.x !== 'number') throw TypeError(
+        `${xpx} shapes[${index}].position.x is type '${typeof shape.position.x}' not 'number'`);
+    if (!isIntInRange(shape.position.x, -1000, 1000)) throw RangeError(
+        `${xpx} shapes[${index}].position.x must be an integer between -1000 and 1000`);
+    if (typeof shape.position.y !== 'number') throw TypeError(
+        `${xpx} shapes[${index}].position.y is type '${typeof shape.position.y}' not 'number'`);
+    if (!isIntInRange(shape.position.y, -1000, 1000)) throw RangeError(
+        `${xpx} shapes[${index}].position.y must be an integer between -1000 and 1000`);
+
+    // `ink` and `paper` must be valid colors.
     if (shape.ink === null || Array.isArray(shape.ink)) throw TypeError(
         `${xpx} shapes[${index}].ink is '${shape.ink === null ? 'null' : 'array'}' not a plain object`);
     if (!isValidColor(shape.ink)) throw RangeError(
@@ -84,6 +103,8 @@ export const validateShape = (shape, xpx, index) => {
         `${xpx} shapes[${index}].paper is '${shape.paper === null ? 'null' : 'array'}' not a plain object`);
     if (!isValidColor(shape.paper)) throw RangeError(
         `${xpx} shapes[${index}].paper is not a valid color`);
+
+    // `pattern` can be 'breton' or 'pinstripe'.
     if (typeof shape.pattern !== 'string') throw TypeError(
         `${xpx} shapes[${index}].pattern is type '${typeof shape.pattern}' not 'string'`);
     if (!isValidPattern(shape.pattern)) throw RangeError(

@@ -17,7 +17,14 @@ const validBlue = { red: 0, green: 0, blue: 255 };
 const validBg = { ink: validOrange, paper: validBlue, pattern: 'breton' };
 
 /** @type {Shape} */
-const validShape = { kind: 'circle', size: 10, ink: validOrange, paper: validBlue, pattern: 'breton' };
+const validShape = {
+    kind: 'circle',
+    size: 10,
+    position: { x: 0, y: 0 },
+    ink: validOrange,
+    paper: validBlue,
+    pattern: 'breton',
+};
 
 
 // Invalid canvasWidth and canvasHeight.
@@ -80,6 +87,20 @@ throws(() => renderAnsi(10, 10, validBg, [ { ...validShape, pattern: [] } ]), { 
 // @ts-expect-error
 throws(() => renderAnsi(10, 10, validBg, [ validShape, { ...validShape, pattern: 'invalid' } ]), { message: /shapes\[1\]\.pattern is not a valid pattern/});
 
+// Position validation tests.
+
+throws(() => renderAnsi(10, 10, validBg, [ { ...validShape, position: null } ]), { message: /shapes\[0\]\.position is 'null' not a plain object/});
+// @ts-expect-error
+throws(() => renderAnsi(10, 10, validBg, [ { ...validShape, position: [] } ]), { message: /shapes\[0\]\.position is 'array' not a plain object/});
+// @ts-expect-error
+throws(() => renderAnsi(10, 10, validBg, [ { ...validShape, position: 'invalid' } ]), { message: /shapes\[0\]\.position is type 'string' not 'object'/});
+// @ts-expect-error
+throws(() => renderAnsi(10, 10, validBg, [ { ...validShape, position: { x: '0', y: 0 } } ]), { message: /shapes\[0\]\.position\.x is type 'string' not 'number'/});
+throws(() => renderAnsi(10, 10, validBg, [ { ...validShape, position: { x: 1001, y: 0 } } ]), { message: /shapes\[0\]\.position\.x must be an integer between -1000 and 1000/});
+// @ts-expect-error
+throws(() => renderAnsi(10, 10, validBg, [ { ...validShape, position: { x: 0, y: '0' } } ]), { message: /shapes\[0\]\.position\.y is type 'string' not 'number'/});
+throws(() => renderAnsi(10, 10, validBg, [ { ...validShape, position: { x: 0, y: -1001 } } ]), { message: /shapes\[0\]\.position\.y must be an integer between -1000 and 1000/});
+throws(() => renderAnsi(10, 10, validBg, [ validShape, { ...validShape, position: null } ]), { message: /shapes\[1\]\.position is 'null' not a plain object/});
 
 // Invalid colorDepth.
 

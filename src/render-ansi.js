@@ -3,6 +3,22 @@ import {
     validateBackground,
     validateShape,
 } from './validate-args.js';
+import {
+    sdfCircle,
+    sdfSquare,
+    sdfTriangle,
+    aabbCircle,
+    aabbSquare,
+    aabbTriangle,
+} from './sdf-and-aabb.js';
+
+// Feature flag to toggle bounding-box culling. When enabled, the renderer 
+// will skip expensive SDF calculations for shapes whose world-space axis-
+// aligned bounding box doesn't contain the pixel being shaded. This is a
+// conservative optimization: bounding boxes are chosen to never exclude a
+// pixel that the shape could affect (they may be slightly larger than the
+// true shape), so correctness is preserved.
+const ENABLE_BOX_CULLING = true;
 
 /**
  * @typedef {import('./types.js').Color} Color
@@ -54,15 +70,8 @@ export const renderAnsi = (
         Array.from({ length: canvasWidth }, () => ({ red: 0, green: 0, blue: 0 }))
     );
 
-    // Create a canvas of the unicode U+2580 'Upper Half Block' character.
-    // Each character cell represents two pixels: the upper half and the lower
-    // half. They are drawn using ANSI escape codes to set the foreground and
-    // background colors accordingly.
-    const charCanvas = Array.from({ length: canvasHeight / 2 }, () =>
-        Array.from({ length: canvasWidth }, () => '▀')
-    );
-
-    // Draw the background.
+    // Draw the background onto the pixel canvas before rendering shapes.
+    // Background must go first so shapes render on top of it.
     switch (background.pattern) {
         case 'breton':
             drawBackgroundBreton(pixelCanvas, background.ink, background.paper);
@@ -72,7 +81,160 @@ export const renderAnsi = (
             break;
     }
 
-    // If the color depth is 256 colors, render the character canvas with 256-color ANSI escape codes.
+    // Convert an anti-aliasing width specified in pixels to world-space
+    // units. The renderer maps the smaller canvas dimension to 10.0 world
+    // units, so one world unit per pixel is 10.0 / min(canvasWidth,canvasHeight).
+    // Use aaRegionPixels to control how many screen pixels the AA band covers.
+    const worldUnitsPerPixel = 10.0 / Math.min(canvasWidth, canvasHeight);
+    const aaRegionPixels = 0.85; // anti-alias region width in pixels (1 would be a little too soft)
+    const aaRegion = aaRegionPixels * worldUnitsPerPixel;
+
+    // Precompute conservative axis-aligned bounding boxes (AABB) for each
+    // shape in world-space. These boxes are expanded by the anti-aliasing
+    // region so that edge pixels aren't incorrectly culled. We compute them
+    // once here so the inner pixel loop can cheaply skip shapes that cannot
+    // possibly affect a given pixel.
+    // Use helper functions colocated with SDFs to compute conservative AABBs
+    // for each shape. These helpers are in `src/sdf-and-aabb.js` and mirror
+    // the previous inline logic; keeping them next to SDFs helps maintain
+    // consistency when shapes change.
+    const shapeBoxes = shapes.map((shape) => {
+        const expand = aaRegion; // expand by aaRegion to be safe around edges
+        switch (shape.kind) {
+            case 'circle':
+                return aabbCircle(shape, expand);
+            case 'square':
+                return aabbSquare(shape, expand);
+            case 'triangle':
+                return aabbTriangle(shape, expand);
+            default:
+                return { minX: -1e6, maxX: 1e6, minY: -1e6, maxY: 1e6 };
+        }
+    });
+
+    // Determine each pixel's color.
+    // Precompute values that are constant across pixels to avoid repeated
+    // work inside the nested loops.
+    const aspectRatio = canvasWidth / canvasHeight;
+    const worldWidth = aspectRatio >= 1 ? 10.0 * aspectRatio : 10.0;
+    const worldHeight = aspectRatio >= 1 ? 10.0 : 10.0 / aspectRatio;
+    const invCanvasWidth = 1.0 / canvasWidth;
+    const invCanvasHeight = 1.0 / canvasHeight;
+
+    // Precompute the world X coordinate for every column and the world Y
+    // coordinate for every row. This moves the division/multiplication out
+    // of the inner pixel loop which is executed for every pixel.
+    const worldXs = new Array(canvasWidth);
+    for (let i = 0; i < canvasWidth; i++) {
+        worldXs[i] = ((i + 0.5) * invCanvasWidth - 0.5) * worldWidth;
+    }
+    const worldYs = new Array(canvasHeight);
+    for (let j = 0; j < canvasHeight; j++) {
+        worldYs[j] = ((j + 0.5) * invCanvasHeight - 0.5) * worldHeight;
+    }
+
+    for (let y = 0; y < canvasHeight; y++) {
+        for (let x = 0; x < canvasWidth; x++) {
+            // Look up the precomputed world coordinates for this pixel.
+            const worldX = worldXs[x];
+            const worldY = worldYs[y];
+
+            // Pick up colours from each shape if the pixel is inside it, or even
+            // close to its edge (for anti-aliasing).
+            let color = { red: 0, green: 0, blue: 0, alpha: 0 };
+
+            // Step through each shape in order.
+            ShapeLoop:
+            for (let si = 0; si < shapes.length; si++) {
+                const shape = shapes[si];
+                // Quick axis-aligned bounding-box culling. If enabled and the
+                // pixel's world coordinate lies outside the (conservative)
+                // box for this shape, skip SDF evaluation entirely.
+                if (ENABLE_BOX_CULLING) {
+                    const box = shapeBoxes[si];
+                    if (worldX < box.minX || worldX > box.maxX || worldY < box.minY || worldY > box.maxY) {
+                        continue; // shape cannot affect this pixel
+                    }
+                }
+                let distance;
+                switch (shape.kind) {
+                    case 'circle':
+                        distance = sdfCircle(
+                            worldX - shape.position.x,
+                            worldY - shape.position.y,
+                            shape.size
+                        );
+                        break;
+                    case 'square':
+                        distance = sdfSquare(
+                            worldX - shape.position.x,
+                            worldY - shape.position.y,
+                            shape.size
+                        );
+                        break;
+                    case 'triangle':
+                        // Pass world coordinates directly; sdfTriangle will
+                        // internally handle Y inversion so callers don't need
+                        // to negate Y.
+                        distance = sdfTriangle(
+                            worldX - shape.position.x,
+                            worldY - shape.position.y,
+                            shape.size
+                        );
+                        break;
+                    default:
+                        throw RangeError(
+                            `${xpx} shape kind '${shape.kind}' is not implemented`);
+                }
+
+                // Determine pixel color based on distance to shape edge.
+                if (distance < -aaRegion / 2) { // aaRegion is defined outside the loops in world units
+                    // Fully inside the shape - solid color
+                    color = {
+                        red: shape.ink.red,
+                        green: shape.ink.green,
+                        blue: shape.ink.blue,
+                        alpha: 1,
+                    };
+                } else if (distance < aaRegion / 2) {
+                    // On the edge - anti-alias and continue checking shapes.
+                    const edgeAlpha = (aaRegion / 2 - distance) / aaRegion; // 0..1
+                    color = blendEdgeColor(shape, edgeAlpha);
+                }
+
+                // Blend the shape onto the canvas. Do NOT break the shape loop
+                // when encountering a fully-opaque pixel -- later shapes in the
+                // array should be allowed to paint over earlier ones.
+                if (color.alpha > 0) {
+                    const existing = pixelCanvas[y][x];
+                    pixelCanvas[y][x] = {
+                        red: Math.round(
+                            (color.red * color.alpha) +
+                            (existing.red * (1 - color.alpha))
+                        ),
+                        green: Math.round(
+                            (color.green * color.alpha) +
+                            (existing.green * (1 - color.alpha))
+                        ),
+                        blue: Math.round(
+                            (color.blue * color.alpha) +
+                            (existing.blue * (1 - color.alpha))
+                        ),
+                    };
+                }
+            }
+        }
+    }
+
+    // Create a canvas of the unicode U+2580 'Upper Half Block' character.
+    // Each character cell represents two pixels: the upper half and the lower
+    // half. They are drawn using ANSI escape codes to set the foreground and
+    // background colors accordingly.
+    const charCanvas = Array.from({ length: canvasHeight / 2 }, () =>
+        Array.from({ length: canvasWidth }, () => '▀')
+    );
+
+    // Background already drawn before rendering shapes.
 
     // Render the character canvas, with Truecolor ANSI escape codes.
     const isTruecolor = colorDepth === 'truecolor';
@@ -80,7 +242,9 @@ export const renderAnsi = (
         (row, y) => row.map((char, x) => {
             const upper = pixelCanvas[y * 2][x];
             const lower = pixelCanvas[y * 2 + 1][x];
-            const ansi = isTruecolor ? getAnsiTruecolor(upper, lower) : getAnsi256Color(upper, lower);
+            const ansi = isTruecolor
+                ? getAnsiTruecolor(upper, lower)
+                : getAnsi256Color(upper, lower);
             return ansi + char;
         }).join('') + '\u001b[0m' // reset color at end of each line
     ).join('\n');
@@ -134,18 +298,64 @@ function getAnsi256Color(upper, lower) {
     return `\u001b[38;5;${upperIndex}m\u001b[48;5;${lowerIndex}m`;
 }
 
+/** #### Get ink color with alpha for AA edge pixels
+ * The actual blending of this ink over whatever is beneath the pixel
+ * happens later in the main loop so edges blend correctly against other
+ * shapes (not just the shape's paper).
+ * @param {import('./types.js').Shape} shape The shape which provides ink
+ * @param {number} edgeAlpha Alpha in range 0..1 (1 == full ink)
+ * @returns {{red:number,green:number,blue:number,alpha:number}}
+ */
+function blendEdgeColor(shape, edgeAlpha) {
+    return {
+        red: shape.ink.red,
+        green: shape.ink.green,
+        blue: shape.ink.blue,
+        alpha: edgeAlpha,
+    };
+}
+
+// Signed distance functions have been moved to `src/signed-distance-functions.js`.
+// They are imported at the top of this file as: sdfCircle, sdfSquare, sdfTriangle.
+
+
 // Example usage:
 
 console.log(
     renderAnsi(
-        16, // will be 16 pixels = 16 characters wide
-        16, // will be 16 pixels = 8 characters tall
+        32, // will be 32 pixels = 32 characters wide
+        24, // will be 24 pixels = 12 characters tall
         {
-            ink: { red: 128, green: 0, blue: 255 },
-            paper: { red: 255, green: 128, blue: 0 },
-            pattern: 'breton', // vertical stripes
+            ink: { red: 40, green: 60, blue: 90 },
+            paper: { red: 20, green: 30, blue: 70 },
+            pattern: 'breton', // horizontal stripes
         },
-        [], // no shapes yet
+        [
+            {
+                kind: 'circle',
+                size: 4, // radius in world units
+                position: { x: 0, y: 0 }, // world-origin, which will render as the center of the canvas
+                ink: { red: 255, green: 50, blue: 50 },
+                paper: { red: 255, green: 200, blue: 200 },
+                pattern: 'pinstripe', // vertical stripes
+            },
+            {
+                kind: 'triangle',
+                size: 3, // half-size in world units
+                position: { x: 4, y: 1 }, // world-origin offset to bottom-right
+                ink: { red: 50, green: 50, blue: 255 },
+                paper: { red: 200, green: 200, blue: 255 },
+                pattern: 'breton', // horizontal stripes
+            },
+            {
+                kind: 'square',
+                size: 3, // half-size in world units
+                position: { x: -3, y: -2 }, // world-origin offset to top-left
+                ink: { red: 50, green: 255, blue: 50 },
+                paper: { red: 200, green: 255, blue: 200 },
+                pattern: 'breton', // horizontal stripes
+            },
+        ],
         typeof process === 'object' &&
             typeof process.env === 'object' &&
             process.env.COLORTERM

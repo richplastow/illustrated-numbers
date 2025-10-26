@@ -30,6 +30,7 @@
  * @typedef {{
  *    kind: 'circle' | 'square' | 'triangle',
  *    size: number,
+ *    position: { x: number, y: number },
  *    ink: Color,
  *    paper: Color,
  *    pattern: Pattern,
