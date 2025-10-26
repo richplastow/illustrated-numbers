@@ -1,13 +1,15 @@
 /**
- * @typedef {'black'
- * | 'blue'
- * | 'cyan'
- * | 'green'
- * | 'yellow'
- * | 'red'
- * | 'magenta'
- * | 'white'
- * } Color
+ * @typedef {{
+ *    red: number,
+ *    green: number,
+ *    blue: number,
+ * }} Color
+ */
+
+/**
+ * @typedef {'truecolor'
+ * | '256'
+ * } ColorDepth
  */
 
 /**

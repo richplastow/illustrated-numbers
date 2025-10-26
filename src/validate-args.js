@@ -1,3 +1,10 @@
+/**
+ * @typedef {import('./types.js').Background} Background
+ * @typedef {import('./types.js').Color} Color
+ * @typedef {import('./types.js').Pattern} Pattern
+ * @typedef {import('./types.js').Shape} Shape
+ */
+
 /** #### Checks if a number is an integer within a specified range
  * - Note that `Number.isInteger(NaN)` immediately returns false
  * @param {number} num The number to check
@@ -9,15 +16,23 @@ export const isIntInRange = (num, min, max) =>
     Number.isInteger(num) && num >= min && num <= max;
 
 /** #### Checks if a color is valid
- * @param {string} color The color to check
+ * @param {Color} color The color to check
  * @returns {boolean} True if the color is valid, false otherwise
  */
 export const isValidColor = (color) => {
-    return ['black', 'blue', 'cyan', 'green', 'yellow', 'red', 'magenta', 'white'].indexOf(color) !== -1;
+    if (typeof color !== 'object' || color === null || Array.isArray(color)) return false;
+    const hasRed = Object.prototype.hasOwnProperty.call(color, 'red');
+    const hasGreen = Object.prototype.hasOwnProperty.call(color, 'green');
+    const hasBlue = Object.prototype.hasOwnProperty.call(color, 'blue');
+    if (!hasRed || !hasGreen || !hasBlue) return false;
+    if (typeof color.red !== 'number' || !isIntInRange(color.red, 0, 255)) return false;
+    if (typeof color.green !== 'number' || !isIntInRange(color.green, 0, 255)) return false;
+    if (typeof color.blue !== 'number' || !isIntInRange(color.blue, 0, 255)) return false;
+    return true;
 }
 
 /** #### Checks if a pattern is valid
- * @param {string} pattern The pattern to check
+ * @param {Pattern} pattern The pattern to check
  * @returns {boolean} True if the pattern is valid, false otherwise
  */
 export const isValidPattern = (pattern) => {
@@ -33,12 +48,8 @@ export const validateBackground = (background, xpx) => {
         `${xpx} background is '${background === null ? 'null' : 'array'}' not a plain object`);
     if (typeof background !== 'object') throw TypeError(
         `${xpx} background is type '${typeof background}' not 'object'`);
-    if (typeof background.ink !== 'string') throw TypeError(
-        `${xpx} background.ink is type '${typeof background.ink}' not 'string'`);
     if (!isValidColor(background.ink)) throw RangeError(
         `${xpx} background.ink is not a valid color`);
-    if (typeof background.paper !== 'string') throw TypeError(
-        `${xpx} background.paper is type '${typeof background.paper}' not 'string'`);
     if (!isValidColor(background.paper)) throw RangeError(
         `${xpx} background.paper is not a valid color`);
     if (typeof background.pattern !== 'string') throw TypeError(
@@ -65,12 +76,12 @@ export const validateShape = (shape, xpx, index) => {
         `${xpx} shapes[${index}].size is type '${typeof shape.size}' not 'number'`);
     if (!isIntInRange(shape.size, 1, 100)) throw RangeError(
         `${xpx} shapes[${index}].size must be an integer between 1 and 100`);
-    if (typeof shape.ink !== 'string') throw TypeError(
-        `${xpx} shapes[${index}].ink is type '${typeof shape.ink}' not 'string'`);
+    if (shape.ink === null || Array.isArray(shape.ink)) throw TypeError(
+        `${xpx} shapes[${index}].ink is '${shape.ink === null ? 'null' : 'array'}' not a plain object`);
     if (!isValidColor(shape.ink)) throw RangeError(
         `${xpx} shapes[${index}].ink is not a valid color`);
-    if (typeof shape.paper !== 'string') throw TypeError(
-        `${xpx} shapes[${index}].paper is type '${typeof shape.paper}' not 'string'`);
+    if (shape.paper === null || Array.isArray(shape.paper)) throw TypeError(
+        `${xpx} shapes[${index}].paper is '${shape.paper === null ? 'null' : 'array'}' not a plain object`);
     if (!isValidColor(shape.paper)) throw RangeError(
         `${xpx} shapes[${index}].paper is not a valid color`);
     if (typeof shape.pattern !== 'string') throw TypeError(
