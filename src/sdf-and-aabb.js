@@ -84,7 +84,7 @@ export const sdfTriangle = (px, py, r) => {
 };
 
 /** #### Axis-aligned bounding box for an equilateral triangle
- * Conservative AABB for an equilateral triangle centered at the origin.
+ * Conservative AABB for an equilateral triangle centred at the origin.
  * @param {{position:{x:number,y:number},size:number}} shape
  * @param {number} expand Amount to expand the box (world units), e.g. aaRegion
  * @returns {{minX:number,maxX:number,minY:number,maxY:number}}

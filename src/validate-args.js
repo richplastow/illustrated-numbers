@@ -15,6 +15,15 @@
 export const isIntInRange = (num, min, max) =>
     Number.isInteger(num) && num >= min && num <= max;
 
+/** #### Checks if a number is a floating-point number within a specified range
+ * @param {number} num The number to check
+ * @param {number} min The minimum value (inclusive)
+ * @param {number} max The maximum value (inclusive)
+ * @returns {boolean} True if the number is a floating-point number within the range, false otherwise
+ */
+export const isFloatInRange = (num, min, max) =>
+    num >= min && num <= max;
+
 /** #### Checks if a color is valid
  * @param {Color} color The color to check
  * @returns {boolean} True if the color is valid, false otherwise
@@ -109,4 +118,18 @@ export const validateShape = (shape, xpx, index) => {
         `${xpx} shapes[${index}].pattern is type '${typeof shape.pattern}' not 'string'`);
     if (!isValidPattern(shape.pattern)) throw RangeError(
         `${xpx} shapes[${index}].pattern is not a valid pattern`);
+
+    // Validate the three stroke properties.
+    if (typeof shape.strokeWidth !== 'number') throw TypeError(
+        `${xpx} shapes[${index}].strokeWidth is type '${typeof shape.strokeWidth}' not 'number'`);
+    if (!isFloatInRange(shape.strokeWidth, 0, 10)) throw RangeError(
+        `${xpx} shapes[${index}].strokeWidth must be a number between 0 and 10`);
+    if (typeof shape.strokePosition !== 'string') throw TypeError(
+        `${xpx} shapes[${index}].strokePosition is type '${typeof shape.strokePosition}' not 'string'`);
+    if (['inside', 'center', 'outside'].indexOf(shape.strokePosition) === -1) throw RangeError(
+        `${xpx} shapes[${index}].strokePosition must be one of 'inside', 'center', or 'outside'`);
+    if (shape.strokeColor === null || Array.isArray(shape.strokeColor)) throw TypeError(
+        `${xpx} shapes[${index}].strokeColor is '${shape.strokeColor === null ? 'null' : 'array'}' not a plain object`);
+    if (!isValidColor(shape.strokeColor)) throw RangeError(
+        `${xpx} shapes[${index}].strokeColor is not a valid color`);
 }

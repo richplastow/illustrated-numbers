@@ -99,7 +99,26 @@ export const renderAnsi = (
     // the previous inline logic; keeping them next to SDFs helps maintain
     // consistency when shapes change.
     const shapeBoxes = shapes.map((shape) => {
-        const expand = aaRegion; // expand by aaRegion to be safe around edges
+        // Base AA expansion in world units.
+        // Also expand outward for strokes that lie outside or are centered
+        // on the shape boundary so we don't accidentally cull stroke pixels.
+        const strokePx = typeof shape.strokeWidth === 'number' ? shape.strokeWidth : 0;
+        const strokeWorld = strokePx * worldUnitsPerPixel;
+        // Default to 'center' semantics if strokePosition is missing.
+        let outwardExtension;
+        switch (shape.strokePosition) {
+            case 'outside':
+                outwardExtension = strokeWorld;
+                break;
+            case 'inside':
+                outwardExtension = 0;
+                break;
+            case 'center':
+            default:
+                outwardExtension = strokeWorld / 2;
+                break;
+        }
+        const expand = aaRegion + outwardExtension; // conservative expand
         switch (shape.kind) {
             case 'circle':
                 return aabbCircle(shape, expand);
@@ -184,17 +203,98 @@ export const renderAnsi = (
                             `${xpx} shape kind '${shape.kind}' is not implemented`);
                 }
 
-                // Determine pixel color based on distance to shape edge.
-                if (distance < -aaRegion / 2) { // aaRegion is defined outside the loops in world units
-                    // Fully inside the shape - sample the shape's pattern (ink/paper)
-                    // at this pixel so shapes can have textured fills.
-                    const fill = sampleShapePattern(shape, x, y);
-                    color = { red: fill.red, green: fill.green, blue: fill.blue, alpha: 1 };
-                } else if (distance < aaRegion / 2) {
-                    // On the edge - anti-alias using the shape's pattern colour
-                    // (not a flat ink), then composite over whatever is beneath.
-                    const edgeAlpha = (aaRegion / 2 - distance) / aaRegion; // 0..1
-                    color = blendEdgeColor(shape, edgeAlpha, x, y);
+                // Determine pixel color based on distance to shape edge. We
+                // support both a textured fill (using sampleShapePattern) and
+                // an optional stroke. The strokeWidth is specified in pixel
+                // (not world units). Convert it to world units using
+                // worldUnitsPerPixel so SDF checks work.
+
+                // Fill alpha (with anti-aliasing).
+                const fillSample = sampleShapePattern(shape, x, y);
+                let fillAlpha = 0;
+                if (distance < aaRegion / 2) {
+                    // Map distance in [-aaRegion/2, aaRegion/2] to fill alpha
+                    // such that at distance <= -aaRegion/2 -> 1, at >= aaRegion/2 -> 0.
+                    fillAlpha = Math.max(0, Math.min(1, (-distance + aaRegion / 2) / aaRegion));
+                }
+
+                // Stroke alpha (pixel-unit strokeWidth).
+                let strokeAlpha = 0;
+                let strokeCol = null;
+                if (typeof shape.strokeWidth === 'number' && shape.strokeWidth > 0 && shape.strokeColor) {
+                    // Convert stroke width in pixels to world units so we can
+                    // compare against the SDF distance. The stroke width is
+                    // specified in pixels and should not scale with canvas size.
+                    const strokeWidthWorld = shape.strokeWidth * worldUnitsPerPixel;
+
+                    // Determine stroke band in world units depending on position.
+                    let bandMin = 0, bandMax = 0;
+                    switch (shape.strokePosition) {
+                        case 'inside':
+                            bandMin = -strokeWidthWorld;
+                            bandMax = 0;
+                            break;
+                        case 'outside':
+                            bandMin = 0;
+                            bandMax = strokeWidthWorld;
+                            break;
+                        case 'center':
+                        default:
+                            bandMin = -strokeWidthWorld / 2;
+                            bandMax = strokeWidthWorld / 2;
+                            break;
+                    }
+
+                    // Distance from the band: zero if inside the band, positive
+                    // if outside. We'll apply AA across aaRegion/2 at the band
+                    // edges.
+                    let distToBand = 0;
+                    if (distance < bandMin) distToBand = bandMin - distance;
+                    else if (distance > bandMax) distToBand = distance - bandMax;
+                    else distToBand = 0;
+
+                    const aaEdge = aaRegion / 2; // pixels->world AA half-band
+                    if (distToBand === 0) strokeAlpha = 1;
+                    else if (distToBand < aaEdge) strokeAlpha = 1 - (distToBand / aaEdge);
+                    else strokeAlpha = 0;
+
+                    strokeCol = shape.strokeColor;
+                }
+
+                // Composite stroke over fill to form this shape's color.
+                if (fillAlpha === 0 && strokeAlpha === 0) {
+                    // Nothing from this shape affects this pixel.
+                    // Loop continues to next shape.
+                    continue;
+                }
+
+                // Compute premultiplied RGB for stroke then fill.
+                // premul = stroke.rgb*strokeA + fill.rgb*fillA*(1 - strokeA)
+                const strokeA = strokeAlpha;
+                const fillA = fillAlpha;
+
+                const strokeR = strokeCol ? strokeCol.red : 0;
+                const strokeG = strokeCol ? strokeCol.green : 0;
+                const strokeB = strokeCol ? strokeCol.blue : 0;
+
+                const premulR = (strokeR * strokeA) + (fillSample.red * fillA * (1 - strokeA));
+                const premulG = (strokeG * strokeA) + (fillSample.green * fillA * (1 - strokeA));
+                const premulB = (strokeB * strokeA) + (fillSample.blue * fillA * (1 - strokeA));
+                const outA = strokeA + fillA * (1 - strokeA);
+
+                // Convert premultiplied RGB to non-premultiplied for the
+                // outer compositing code which expects (rgb, alpha).
+                if (outA > 0) {
+                    color = {
+                        red: Math.round(premulR / outA),
+                        green: Math.round(premulG / outA),
+                        blue: Math.round(premulB / outA),
+                        alpha: outA,
+                    };
+                } else {
+                    // Shouldn't happen because we early-continued when both are 0,
+                    // but be defensive.
+                    color = { red: 0, green: 0, blue: 0, alpha: 0 };
                 }
 
                 // Blend the shape onto the canvas. Do NOT break the shape loop
@@ -356,6 +456,9 @@ console.log(
                 ink: { red: 255, green: 50, blue: 50 },
                 paper: { red: 255, green: 200, blue: 200 },
                 pattern: 'pinstripe', // vertical stripes
+                strokeColor: { red: 255, green: 255, blue: 80 },
+                strokePosition: 'inside',
+                strokeWidth: 0.125, // quite subtle
             },
             {
                 kind: 'triangle',
@@ -364,6 +467,9 @@ console.log(
                 ink: { red: 50, green: 50, blue: 255 },
                 paper: { red: 200, green: 200, blue: 0 },
                 pattern: 'breton', // horizontal stripes
+                strokeColor: { red: 200, green: 255, blue: 200 },
+                strokePosition: 'outside',
+                strokeWidth: 1,
             },
             {
                 kind: 'square',
@@ -372,6 +478,9 @@ console.log(
                 ink: { red: 50, green: 10, blue: 50 },
                 paper: { red: 200, green: 255, blue: 200 },
                 pattern: 'pinstripe', // horizontal stripes
+                strokeColor: { red: 0, green: 0, blue: 0 },
+                strokePosition: 'center',
+                strokeWidth: 2.5,
             },
         ],
         typeof process === 'object' &&
