@@ -62,8 +62,8 @@ export const renderAnsi = (
     shapes.forEach((shape, i) => validateShape(shape, xpx, i));
     if (typeof colorDepth !== 'string') throw TypeError(
         `${xpx} colorDepth is type '${typeof colorDepth}' not 'string'`);
-    if (['truecolor', '256'].indexOf(colorDepth) === -1) throw RangeError(
-        `${xpx} colorDepth must be one of 'truecolor' or '256'`);
+    if (['truecolor', '256', 'monochrome'].indexOf(colorDepth) === -1) throw RangeError(
+        `${xpx} colorDepth must be one of 'truecolor', '256' or 'monochrome'`);
 
     // Create a black canvas of pixels with the specified dimensions.
     const pixelCanvas = Array.from({ length: canvasHeight }, () =>
@@ -100,8 +100,8 @@ export const renderAnsi = (
     // consistency when shapes change.
     const shapeBoxes = shapes.map((shape) => {
         // Base AA expansion in world units.
-        // Also expand outward for strokes that lie outside or are centered
-        // on the shape boundary so we don't accidentally cull stroke pixels.
+        // Also expand outward for strokes that lie outside or are centred on
+        // the shape boundary so we don't accidentally cull stroke pixels.
         const strokePx = typeof shape.strokeWidth === 'number' ? shape.strokeWidth : 0;
         const strokeWorld = strokePx * worldUnitsPerPixel;
         // Default to 'center' semantics if strokePosition is missing.
@@ -329,12 +329,22 @@ export const renderAnsi = (
         Array.from({ length: canvasWidth }, () => '▀')
     );
 
-    // Background already drawn before rendering shapes.
+    // If monochrome, just render the whole thing in characters with no ANSI.
+    // This is handy for unit tests.
+    if (colorDepth === 'monochrome') {
+        return charCanvas.map(
+            (row, y) => row.map((_char, x) => { // TODO use `char` or get rid of it
+                const upper = pixelCanvas[y * 2][x];
+                const lower = pixelCanvas[y * 2 + 1][x];
+                return getMonochrome(upper, lower);
+            }).join('')
+        ).join('\n');
+    }
 
     // Render the character canvas, with Truecolor ANSI escape codes.
     const isTruecolor = colorDepth === 'truecolor';
     return charCanvas.map(
-        (row, y) => row.map((char, x) => {
+        (row, y) => row.map((char, x) => { // TODO use `char`, or don't even generate it
             const upper = pixelCanvas[y * 2][x];
             const lower = pixelCanvas[y * 2 + 1][x];
             const ansi = isTruecolor
@@ -391,6 +401,27 @@ function getAnsi256Color(upper, lower) {
     const upperIndex = 16 + (36 * Math.round(upper.red / 51)) + (6 * Math.round(upper.green / 51)) + Math.round(upper.blue / 51);
     const lowerIndex = 16 + (36 * Math.round(lower.red / 51)) + (6 * Math.round(lower.green / 51)) + Math.round(lower.blue / 51);
     return `\u001b[38;5;${upperIndex}m\u001b[48;5;${lowerIndex}m`;
+}
+
+/** #### Gets the Unicode 'Block Elements' character for rendering in monochrome
+ * @param {Color} upper The upper half color
+ * @param {Color} lower The lower half color
+ * @returns {string} The Unicode 'Block Elements' character
+ */
+function getMonochrome(upper, lower) {
+    // Use an integer-only luminance approximation to be fast and portable to
+    // environments like Rust or WGSL. Coefficients sum to 256 so we can shift
+    // by 8 instead of dividing: (54*R + 183*G + 19*B) >> 8
+    const lumUpper = (54 * upper.red + 183 * upper.green + 19 * upper.blue) >> 8;
+    const lumLower = (54 * lower.red + 183 * lower.green + 19 * lower.blue) >> 8;
+    return lumUpper > 128
+        ? lumLower > 128
+            ? '\u2588' // Full block
+            : '\u2580' // Upper half block
+    : lumLower > 128
+            ? '\u2584' // Lower half block
+            : ' ' // space - a refinement would be to use U+3000 (IDEOGRAPHIC SPACE), maybe even followed by U+2060 (WORD JOINER)
+    ;
 }
 
 /** #### Get ink color with alpha for AA edge pixels

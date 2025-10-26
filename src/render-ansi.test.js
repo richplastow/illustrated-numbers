@@ -124,7 +124,7 @@ throws(() => renderAnsi(10, 10, validBg, [ validShape, { ...validShape, position
 // @ts-expect-error
 throws(() => renderAnsi(10, 10, validBg, [], 123), { message: /colorDepth is type 'number' not 'string'/});
 // @ts-expect-error
-throws(() => renderAnsi(10, 10, validBg, [], 'invalid'), { message: /colorDepth must be one of 'truecolor' or '256'/});
+throws(() => renderAnsi(10, 10, validBg, [], 'invalid'), { message: /colorDepth must be one of 'truecolor', '256' or 'monochrome'/});
 
 
 // Valid inputs.

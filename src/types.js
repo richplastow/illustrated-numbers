@@ -9,6 +9,7 @@
 /**
  * @typedef {'truecolor'
  * | '256'
+ * | 'monochrome'
  * } ColorDepth
  */
 
